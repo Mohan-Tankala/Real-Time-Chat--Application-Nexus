@@ -1,0 +1,62 @@
+{% extends 'base.html' %}
+
+{% block title %}Sign Up - Nexus Chat{% endblock %}
+
+{% block content %}
+<div class="auth-wrapper d-flex align-items-center justify-content-center min-vh-100 position-relative overflow-hidden">
+    <!-- Ambient Glow effects -->
+    <div class="glow-orb glow-orb-1"></div>
+    <div class="glow-orb glow-orb-2"></div>
+    
+    <div class="card auth-card glass-panel p-4 shadow-lg border-0 my-5" style="max-width: 500px; width: 90%;">
+        <div class="text-center mb-3">
+            <div class="logo-container mb-2">
+                <i class="fa-solid fa-user-plus text-primary display-5"></i>
+            </div>
+            <h2 class="auth-title fw-bold text-light">Create Account</h2>
+            <p class="text-secondary small">Join the real-time conversation</p>
+        </div>
+
+        <form method="POST">
+            {% csrf_token %}
+            
+            {% for field in form %}
+                <div class="mb-3">
+                    <label for="{{ field.id_for_label }}" class="form-label text-secondary small">{{ field.label }}</label>
+                    <div class="input-group">
+                        <span class="input-group-text border-0 glass-input-icon">
+                            {% if "username" in field.name %}
+                                <i class="fa-regular fa-user text-secondary"></i>
+                            {% elif "email" in field.name %}
+                                <i class="fa-regular fa-envelope text-secondary"></i>
+                            {% elif "password" in field.name %}
+                                <i class="fa-solid fa-lock text-secondary"></i>
+                            {% else %}
+                                <i class="fa-solid fa-id-card text-secondary"></i>
+                            {% endif %}
+                        </span>
+                        <input type="{{ field.field.widget.input_type|default:'text' }}" 
+                               name="{{ field.name }}" 
+                               id="{{ field.id_for_label }}" 
+                               class="form-control glass-input border-0" 
+                               placeholder="Enter {{ field.label|lower }}"
+                               required>
+                    </div>
+                    {% if field.help_text %}
+                        <div class="form-text text-secondary" style="font-size: 0.75rem;">{{ field.help_text|safe }}</div>
+                    {% endif %}
+                </div>
+            {% endfor %}
+
+            <button type="submit" class="btn btn-primary w-100 py-2.5 fw-semibold glow-button mt-3 mb-2">
+                Create Account <i class="fa-solid fa-user-check ms-2"></i>
+            </button>
+        </form>
+
+        <div class="text-center mt-3">
+            <span class="text-secondary small">Already have an account? </span>
+            <a href="{% url 'login' %}" class="text-primary small fw-semibold text-decoration-none hover-link">Sign In</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

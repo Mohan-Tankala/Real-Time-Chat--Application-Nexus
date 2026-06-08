@@ -1,0 +1,82 @@
+{% extends 'base.html' %}
+
+{% block title %}My Profile - Nexus Chat{% endblock %}
+
+{% block content %}
+<div class="container py-5 min-vh-100 d-flex align-items-center justify-content-center position-relative overflow-hidden">
+    <!-- Ambient Glow effects -->
+    <div class="glow-orb glow-orb-1"></div>
+    <div class="glow-orb glow-orb-2"></div>
+
+    <div class="card profile-card glass-panel p-4 p-md-5 shadow-lg border-0 my-5" style="max-width: 700px; width: 100%;">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2 class="fw-bold text-light mb-0"><i class="fa-solid fa-user-gear text-primary me-2"></i>Edit Profile</h2>
+            <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary btn-sm border-0"><i class="fa-solid fa-arrow-left me-2"></i>Back to Chat</a>
+        </div>
+
+        <form method="POST" enctype="multipart/form-data">
+            {% csrf_token %}
+
+            <div class="row align-items-center mb-4 text-center text-md-start">
+                <div class="col-md-3 mb-3 mb-md-0 d-flex justify-content-center">
+                    <div class="profile-avatar-container position-relative">
+                        <img id="avatar-preview" src="{{ user.profile.avatar_url }}" alt="Avatar" class="profile-avatar rounded-circle border border-primary border-3 shadow" style="width: 110px; height: 110px; object-fit: cover;">
+                        <label for="id_avatar" class="avatar-upload-badge position-absolute bottom-0 end-0 bg-primary text-light rounded-circle shadow p-2 cursor-pointer" style="width: 35px; height: 35px; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+                            <i class="fa-solid fa-camera" style="font-size: 0.9rem;"></i>
+                        </label>
+                        <input type="file" name="avatar" id="id_avatar" class="d-none" accept="image/*" onchange="previewAvatar(this)">
+                    </div>
+                </div>
+                <div class="col-md-9">
+                    <h4 class="text-light fw-semibold mb-1">{{ user.username }}</h4>
+                    <p class="text-secondary small mb-0">Joined {{ user.date_joined|date:"M Y" }}</p>
+                </div>
+            </div>
+
+            <hr class="border-secondary mb-4 opacity-25">
+
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label text-secondary small">First Name</label>
+                    <input type="text" name="first_name" class="form-control glass-input" value="{{ user.first_name }}">
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label text-secondary small">Last Name</label>
+                    <input type="text" name="last_name" class="form-control glass-input" value="{{ user.last_name }}">
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label text-secondary small">Email Address</label>
+                <input type="email" name="email" class="form-control glass-input" value="{{ user.email }}" required>
+            </div>
+
+            <div class="mb-4">
+                <label for="id_bio" class="form-label text-secondary small">Biography</label>
+                <textarea name="bio" id="id_bio" class="form-control glass-input" rows="3" placeholder="Tell the world about yourself...">{{ user.profile.bio }}</textarea>
+            </div>
+
+            <div class="d-flex justify-content-end gap-3 mt-4">
+                <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary px-4 py-2 border-0">Cancel</a>
+                <button type="submit" class="btn btn-primary px-4 py-2 glow-button fw-semibold">
+                    Save Changes <i class="fa-solid fa-check ms-2"></i>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function previewAvatar(input) {
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                document.getElementById('avatar-preview').src = e.target.result;
+            }
+            reader.readAsDataURL(input.files[0]);
+        }
+    }
+</script>
+{% endblock %}

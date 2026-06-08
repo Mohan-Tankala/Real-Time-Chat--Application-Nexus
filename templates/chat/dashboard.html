@@ -1,0 +1,634 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - Nexus Chat{% endblock %}
+
+{% block content %}
+<div class="chat-layout d-flex min-vh-100 overflow-hidden">
+    <!-- Sidebar Panel -->
+    <div class="sidebar glass-panel d-flex flex-column" id="sidebar">
+        <!-- Sidebar Header (User profile info) -->
+        <div class="sidebar-header d-flex align-items-center justify-content-between p-3 border-bottom border-secondary border-opacity-25">
+            <div class="d-flex align-items-center gap-2">
+                <img src="{{ user.profile.avatar_url }}" alt="Profile" class="rounded-circle border border-primary border-2" style="width: 42px; height: 42px; object-fit: cover;">
+                <div class="user-meta overflow-hidden" style="max-width: 130px;">
+                    <h6 class="text-light mb-0 text-truncate fw-semibold">{{ user.username }}</h6>
+                    <span class="text-success small d-flex align-items-center gap-1"><span class="status-dot-static bg-success"></span>Online</span>
+                </div>
+            </div>
+            <div class="header-actions d-flex gap-1">
+                <a href="{% url 'profile' %}" class="btn btn-icon text-secondary hover-primary" title="Settings"><i class="fa-solid fa-user-gear"></i></a>
+                <a href="{% url 'logout' %}" class="btn btn-icon text-secondary hover-danger" title="Logout"><i class="fa-solid fa-arrow-right-from-bracket"></i></a>
+            </div>
+        </div>
+
+        <!-- Sidebar Search -->
+        <div class="p-3 border-bottom border-secondary border-opacity-25">
+            <div class="position-relative search-box">
+                <input type="text" id="user-search-input" class="form-control glass-input search-input border-0 py-2 ps-4" placeholder="Search users...">
+                <i class="fa-solid fa-magnifying-glass search-icon text-secondary position-absolute" style="left: 12px; top: 12px; font-size: 0.85rem;"></i>
+                
+                <!-- Dynamic Search Results -->
+                <div id="search-results-dropdown" class="search-results glass-panel shadow-lg position-absolute w-100 d-none mt-2" style="z-index: 1000;">
+                    <!-- Results dynamically loaded here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Sidebar Tabs -->
+        <div class="px-3 py-2 border-bottom border-secondary border-opacity-25 d-flex gap-2">
+            <button class="btn btn-sm w-50 py-1.5 fw-semibold sidebar-tab active" id="tab-chats" onclick="switchSidebarTab('chats')">
+                <i class="fa-solid fa-message me-1.5"></i>Chats
+            </button>
+            <button class="btn btn-sm w-50 py-1.5 fw-semibold sidebar-tab" id="tab-calls" onclick="switchSidebarTab('calls')">
+                <i class="fa-solid fa-phone me-1.5"></i>Calls
+            </button>
+        </div>
+
+        <!-- Active Room Lists -->
+        <div class="room-list-container flex-grow-1 overflow-y-auto p-2" id="room-list">
+            <!-- Chats Pane -->
+            <div id="chats-list-pane">
+                {% if chat_list %}
+                    {% for chat in chat_list %}
+                        <a href="{% url 'room' room_slug=chat.room.slug %}" class="room-item d-flex align-items-center p-2 rounded mb-1 text-decoration-none {% if active_room and active_room.slug == chat.room.slug %}active-room{% endif %}" data-room-slug="{{ chat.room.slug }}">
+                            <div class="position-relative me-3">
+                                <img src="{{ chat.display_avatar }}" alt="{{ chat.display_name }}" class="room-avatar rounded-circle border border-secondary border-opacity-25" style="width: 46px; height: 46px; object-fit: cover;" id="avatar-{{ chat.room.slug }}">
+                                {% if not chat.room.is_group and chat.other_user %}
+                                    <span class="status-indicator position-absolute bottom-0 end-0 rounded-circle border border-dark {% if chat.other_user.profile.is_online %}bg-success{% else %}bg-secondary{% endif %}" id="status-dot-{{ chat.other_user.username }}" style="width: 12px; height: 12px; display: inline-block;"></span>
+                                {% endif %}
+                            </div>
+                            <div class="room-details flex-grow-1 overflow-hidden">
+                                <div class="d-flex justify-content-between align-items-baseline mb-0.5">
+                                    <h6 class="room-name text-light mb-0 text-truncate fw-semibold" style="font-size: 0.95rem;">{{ chat.display_name }}</h6>
+                                    <small class="text-secondary" style="font-size: 0.75rem;" id="time-{{ chat.room.slug }}">
+                                        {% if chat.last_message %}
+                                            {{ chat.last_message.timestamp|date:"h:i A" }}
+                                        {% endif %}
+                                    </small>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span class="last-msg-preview text-secondary small text-truncate pe-2" id="preview-{{ chat.room.slug }}">
+                                        {% if chat.last_message %}
+                                            {% if chat.last_message.sender == user %}You: {% endif %}{{ chat.last_message.content }}
+                                        {% else %}
+                                            No messages yet
+                                        {% endif %}
+                                    </span>
+                                    <span class="badge bg-primary rounded-pill {% if chat.unread_count == 0 %}d-none{% endif %}" id="badge-{{ chat.room.slug }}">{{ chat.unread_count }}</span>
+                                </div>
+                            </div>
+                        </a>
+                    {% endfor %}
+                {% else %}
+                    <div class="text-center text-secondary py-5">
+                        <i class="fa-solid fa-comments display-6 mb-3 text-opacity-25"></i>
+                        <p class="small">No conversations yet.<br>Search users above to start chatting!</p>
+                    </div>
+                {% endif %}
+            </div>
+
+            <!-- Calls Pane -->
+            <div id="calls-list-pane" class="d-none">
+                <div class="text-center text-secondary py-5" id="calls-empty-state">
+                    <i class="fa-solid fa-phone-slash display-6 mb-3 text-opacity-25"></i>
+                    <p class="small">No call history yet.</p>
+                </div>
+                <div id="calls-history-list" class="d-flex flex-column gap-1"></div>
+            </div>
+        </div>
+
+
+        <!-- Sidebar Actions Footer -->
+        <div class="p-3 border-top border-secondary border-opacity-25 d-flex gap-2">
+            <button class="btn btn-outline-primary btn-sm w-100 py-2 border-0 fw-semibold" data-bs-toggle="modal" data-bs-target="#createGroupModal">
+                <i class="fa-solid fa-users-medical me-2"></i>Create Group
+            </button>
+        </div>
+    </div>
+
+    <!-- Active Chat Panel -->
+    <div class="chat-panel flex-grow-1 d-flex flex-column position-relative" id="chat-panel">
+        <!-- Active Call Screen Overlay -->
+        <div class="active-call-overlay d-none position-absolute w-100 h-100 top-0 start-0 d-flex flex-column align-items-center justify-content-between p-4" id="active-call-screen" style="z-index: 1000; background: rgba(10, 15, 26, 0.95); backdrop-filter: blur(15px);">
+            <!-- Call Header (Other User info & Timer) -->
+            <div class="call-header text-center mt-4">
+                <img id="call-avatar" src="/static/images/default-avatar.svg" class="rounded-circle border border-primary border-3 pulse-animation mb-3" style="width: 100px; height: 100px; object-fit: cover;">
+                <h4 id="call-display-name" class="text-light fw-bold mb-1">Username</h4>
+                <div class="call-status-wrapper d-flex align-items-center justify-content-center gap-2">
+                    <span id="call-status-text" class="text-secondary small fw-medium">Calling...</span>
+                    <span id="call-timer" class="badge bg-dark text-success border border-success border-opacity-25 px-2.5 py-1.5 d-none">00:00</span>
+                </div>
+            </div>
+
+            <!-- Video Containers (Only for video calls) -->
+            <div class="video-grid-container d-none w-100 flex-grow-1 d-flex align-items-center justify-content-center position-relative my-3" id="video-grid">
+                <!-- Remote Video (Full Screen) -->
+                <video id="remote-video" autoplay playsinline class="w-100 h-100 rounded-4" style="object-fit: cover; background: #06090e; border: 1px solid var(--border-glass);"></video>
+                
+                <!-- Local Video (Picture-in-Picture) -->
+                <div class="local-video-wrapper position-absolute bottom-3 end-3 shadow-lg" style="width: 150px; height: 110px; z-index: 10; bottom: 20px; right: 20px;">
+                    <video id="local-video" autoplay playsinline muted class="w-100 h-100 rounded-3 border border-secondary border-opacity-50" style="object-fit: cover; background: #111827;"></video>
+                </div>
+            </div>
+
+            <!-- Call Controls -->
+            <div class="call-controls-container d-flex align-items-center justify-content-center gap-3 mb-4">
+                <button class="btn btn-lg btn-icon text-light hover-primary" id="toggle-mic-btn" title="Toggle Microphone">
+                    <i class="fa-solid fa-microphone"></i>
+                </button>
+                <button class="btn btn-lg btn-icon text-light hover-primary d-none" id="toggle-cam-btn" title="Toggle Camera">
+                    <i class="fa-solid fa-video"></i>
+                </button>
+                <button class="btn btn-lg btn-icon text-light hover-primary d-none" id="share-screen-btn" title="Share Screen">
+                    <i class="fa-solid fa-desktop"></i>
+                </button>
+                <button class="btn btn-lg btn-icon bg-danger text-white glow-button" id="end-call-btn" title="End Call" style="width: 48px; height: 48px; background-color: var(--danger) !important; box-shadow: 0 4px 15px var(--danger-glow); border: none;">
+                    <i class="fa-solid fa-phone-slash"></i>
+                </button>
+            </div>
+        </div>
+
+        {% if active_room %}
+            <!-- Chat Header -->
+            <div class="chat-header glass-panel d-flex align-items-center justify-content-between p-3 border-bottom border-secondary border-opacity-25">
+                <div class="d-flex align-items-center gap-3">
+                    <button class="btn btn-icon text-light d-md-none p-0 me-2" onclick="toggleSidebar()"><i class="fa-solid fa-bars"></i></button>
+                    
+                    {% if active_room.is_group %}
+                        <img src="{% if active_room.group_avatar %}{{ active_room.group_avatar.url }}{% else %}/static/images/default-group.png"{% endif %} alt="Avatar" class="rounded-circle border border-primary border-1" style="width: 44px; height: 44px; object-fit: cover;">
+                    {% else %}
+                        {% for member in active_room.members.all %}
+                            {% if member != user %}
+                                <img src="{{ member.profile.avatar_url }}" alt="Avatar" class="rounded-circle border border-primary border-1" style="width: 44px; height: 44px; object-fit: cover;">
+                            {% endif %}
+                        {% empty %}
+                            <img src="{{ user.profile.avatar_url }}" alt="Avatar" class="rounded-circle border border-primary border-1" style="width: 44px; height: 44px; object-fit: cover;">
+                        {% endfor %}
+                    {% endif %}
+
+                    <div class="chat-room-meta">
+                        <h6 class="text-light mb-0 fw-semibold" id="active-room-display-name">
+                            {% if active_room.is_group %}
+                                {{ active_room.name }}
+                            {% else %}
+                                {% for member in active_room.members.all %}
+                                    {% if member != user %}{{ member.first_name }} {{ member.last_name }}{% endif %}
+                                {% empty %}
+                                    Saved Messages (You)
+                                {% endfor %}
+                            {% endif %}
+                        </h6>
+                        <span class="text-secondary small d-block" id="active-room-status-text">
+                            {% if active_room.is_group %}
+                                {{ active_room.members.count }} members
+                            {% else %}
+                                {% for member in active_room.members.all %}
+                                    {% if member != user %}
+                                        {% if member.profile.is_online %}
+                                            <span class="text-success">Online</span>
+                                        {% else %}
+                                            Last seen {{ member.profile.last_seen|timesince }} ago
+                                        {% endif %}
+                                    {% endif %}
+                                {% endfor %}
+                            {% endif %}
+                        </span>
+                    </div>
+                </div>
+
+                <div class="chat-header-actions d-flex gap-2">
+                    {% if active_room.is_group %}
+                        <button class="btn btn-icon text-secondary hover-primary" onclick="toggleDetailsPane()"><i class="fa-solid fa-circle-info"></i></button>
+                    {% else %}
+                        {% if active_room.members.count > 1 %}
+                            <button class="btn btn-icon text-secondary hover-success" id="start-voice-call" title="Voice Call"><i class="fa-solid fa-phone"></i></button>
+                            <button class="btn btn-icon text-secondary hover-success" id="start-video-call" title="Video Call"><i class="fa-solid fa-video"></i></button>
+                        {% endif %}
+                    {% endif %}
+                </div>
+
+            </div>
+
+            <!-- Messages List -->
+            <div class="messages-container flex-grow-1 overflow-y-auto p-4 d-flex flex-column" id="messages-list-pane">
+                {% for message in messages_history %}
+                    <div class="message-wrapper d-flex mb-3 {% if message.sender == user %}justify-content-end{% endif %}" id="msg-wrapper-{{ message.id }}">
+                        {% if message.sender != user %}
+                            <img src="{{ message.sender.profile.avatar_url }}" alt="Avatar" class="rounded-circle border border-secondary border-opacity-25 me-2 mt-auto" style="width: 32px; height: 32px; object-fit: cover;">
+                        {% endif %}
+                        
+                        <div class="message-bubble-container position-relative">
+                            {% if active_room.is_group and message.sender != user %}
+                                <span class="message-sender-name text-primary small d-block mb-1 fw-medium">{{ message.sender.username }}</span>
+                            {% endif %}
+
+                            <div class="message-bubble {% if message.sender == user %}message-sent{% else %}message-received{% endif %} p-2.5 px-3 rounded shadow-sm" id="msg-bubble-{{ message.id }}">
+                                {% if message.file_type == 'image' %}
+                                    <div class="message-image-container mb-1">
+                                        <img src="{{ message.file.url }}" alt="Upload" class="img-fluid rounded border border-secondary border-opacity-25 cursor-pointer max-w-250 shadow-sm" style="max-height: 250px; object-fit: cover;" onclick="openImageModal('{{ message.file.url }}')">
+                                    </div>
+                                {% elif message.file_type == 'video' %}
+                                    <div class="message-video-container mb-1">
+                                        <video src="{{ message.file.url }}" controls class="rounded border border-secondary border-opacity-25 shadow-sm" style="max-width: 250px; max-height: 200px;"></video>
+                                    </div>
+                                {% elif message.file_type == 'file' %}
+                                    <div class="message-file-container mb-1 d-flex align-items-center gap-2 p-2 bg-dark bg-opacity-25 rounded border border-secondary border-opacity-10">
+                                        <i class="fa-solid fa-file-arrow-down text-primary fs-4"></i>
+                                        <div class="overflow-hidden">
+                                            <a href="{{ message.file.url }}" download class="text-light small text-decoration-none fw-medium text-truncate d-block" style="max-width: 150px;">{{ message.content }}</a>
+                                            <span class="text-secondary" style="font-size: 0.65rem;">Download Document</span>
+                                        </div>
+                                    </div>
+                                {% else %}
+                                    <span class="message-text" id="msg-text-{{ message.id }}">{{ message.content }}</span>
+                                {% endif %}
+
+                                <div class="message-meta d-flex justify-content-end align-items-center gap-1.5 mt-1" style="font-size: 0.68rem;">
+                                    <span class="text-secondary-opacity" id="msg-edited-{{ message.id }}">{% if message.edited %}edited {% endif %}</span>
+                                    <span class="text-secondary-opacity">{{ message.timestamp|date:"h:i A" }}</span>
+                                    {% if message.sender == user %}
+                                        <span class="read-receipt" id="receipt-{{ message.id }}">
+                                            {% if message.is_read %}
+                                                <i class="fa-solid fa-check-double text-success"></i>
+                                            {% else %}
+                                                <i class="fa-solid fa-check text-secondary"></i>
+                                            {% endif %}
+                                        </span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            
+                            <!-- Context Actions (Edit / Delete) for User's own messages -->
+                            {% if message.sender == user %}
+                                <div class="message-actions-trigger position-absolute top-50 translate-middle-y d-none" id="actions-trigger-{{ message.id }}">
+                                    <div class="dropdown">
+                                        <button class="btn btn-sm text-secondary hover-primary border-0 bg-transparent p-1" data-bs-toggle="dropdown"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+                                        <ul class="dropdown-menu dropdown-menu-dark border-secondary border-opacity-25 shadow">
+                                            {% if message.file_type == 'text' %}
+                                                <li><button class="dropdown-item text-light py-1.5" onclick="enterEditMode({{ message.id }}, '{{ message.content|escapejs }}')"><i class="fa-solid fa-pen-to-square me-2 fs-7"></i>Edit</button></li>
+                                            {% endif %}
+                                            <li><button class="dropdown-item text-danger py-1.5" onclick="deleteMessage({{ message.id }})"><i class="fa-solid fa-trash-can me-2 fs-7"></i>Delete</button></li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                {% endfor %}
+                <div class="typing-indicator-bubble d-none align-items-center gap-2 mb-3 mt-1 text-secondary small" id="typing-indicator">
+                    <span class="typing-dot"></span>
+                    <span class="typing-dot"></span>
+                    <span class="typing-dot"></span>
+                    <span class="ms-1" id="typing-indicator-text">username is typing...</span>
+                </div>
+            </div>
+
+            <!-- Edit Message Overlay -->
+            <div class="edit-toolbar glass-panel p-2 px-3 border-top border-secondary border-opacity-25 d-none align-items-center justify-content-between" id="edit-message-toolbar">
+                <div class="d-flex align-items-center gap-2 overflow-hidden">
+                    <i class="fa-solid fa-pen text-primary"></i>
+                    <div class="overflow-hidden">
+                        <span class="text-primary small fw-semibold">Edit Message</span>
+                        <p class="text-secondary small mb-0 text-truncate" id="edit-message-original-text">original text</p>
+                    </div>
+                </div>
+                <button class="btn btn-sm btn-icon text-secondary hover-danger" onclick="cancelEditMode()"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <!-- Message Input Area -->
+            <div class="chat-input-bar glass-panel p-3 border-top border-secondary border-opacity-25 d-flex align-items-center gap-3">
+                <!-- Attach file button -->
+                <div class="input-action">
+                    <button class="btn btn-icon btn-outline-secondary border-0 text-secondary hover-primary" onclick="triggerFileUpload()" id="attach-btn"><i class="fa-solid fa-paperclip"></i></button>
+                    <input type="file" id="file-uploader" class="d-none" onchange="handleFileUpload(this)">
+                </div>
+
+                <!-- Input Text Field -->
+                <div class="flex-grow-1 position-relative">
+                    <input type="text" id="chat-input-field" class="form-control glass-input border-0 py-2.5 px-3" placeholder="Write a message..." autofocus autocomplete="off">
+                </div>
+
+                <!-- Send button -->
+                <div class="input-action">
+                    <button class="btn btn-primary rounded-circle glow-button" style="width: 42px; height: 42px; display: flex; align-items: center; justify-content: center;" id="send-message-btn"><i class="fa-solid fa-paper-plane" style="font-size: 0.95rem;"></i></button>
+                </div>
+            </div>
+        {% else %}
+            <!-- Room Not Selected Placeholder -->
+            <div class="d-flex flex-column align-items-center justify-content-center flex-grow-1 text-center p-5">
+                <div class="glow-orb glow-orb-3"></div>
+                <div class="mb-4 text-primary opacity-50">
+                    <i class="fa-solid fa-comments display-1"></i>
+                </div>
+                <h3 class="fw-bold text-light">Nexus Real-Time Chat</h3>
+                <p class="text-secondary" style="max-width: 400px;">Select a contact or a group from the sidebar to load the conversation history and start sending instant messages.</p>
+                <button class="btn btn-primary glow-button px-4 py-2 mt-2 fw-semibold" onclick="toggleSidebarSearch()">
+                    <i class="fa-solid fa-magnifying-glass me-2"></i>Search Friends
+                </button>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Group Information Panel (Right Sidebar) -->
+    {% if active_room and active_room.is_group %}
+        <div class="details-pane glass-panel d-flex flex-column d-none" id="details-pane">
+            <div class="details-header p-3 border-bottom border-secondary border-opacity-25 d-flex align-items-center justify-content-between">
+                <h6 class="text-light fw-bold mb-0">Group Information</h6>
+                <button class="btn btn-icon text-secondary hover-danger border-0 bg-transparent p-0" onclick="toggleDetailsPane()"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            
+            <div class="details-content flex-grow-1 overflow-y-auto p-4">
+                <div class="text-center mb-4">
+                    <img src="{% if active_room.group_avatar %}{{ active_room.group_avatar.url }}{% else %}/static/images/default-group.png"{% endif %} alt="Group Avatar" class="rounded-circle border border-primary border-2 shadow mb-2" style="width: 90px; height: 90px; object-fit: cover;">
+                    <h5 class="text-light fw-semibold mb-1">{{ active_room.name }}</h5>
+                    <span class="text-secondary small">Created on {{ active_room.created_at|date:"M d, Y" }}</span>
+                </div>
+
+                {% if active_room.description %}
+                    <div class="mb-4">
+                        <label class="text-secondary small fw-medium d-block mb-1">Description</label>
+                        <p class="text-light-50 small bg-dark bg-opacity-20 p-3 rounded border border-secondary border-opacity-10">{{ active_room.description }}</p>
+                    </div>
+                {% endif %}
+
+                <div>
+                    <label class="text-secondary small fw-medium d-block mb-2">Members ({{ active_room.members.count }})</label>
+                    <div class="member-list" id="group-member-list">
+                        {% for member in group_members %}
+                            <div class="member-item d-flex align-items-center justify-content-between py-2 border-bottom border-secondary border-opacity-10" id="member-row-{{ member.id }}">
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="position-relative">
+                                        <img src="{{ member.profile.avatar_url }}" alt="Member Avatar" class="rounded-circle border border-secondary border-opacity-20" style="width: 32px; height: 32px; object-fit: cover;">
+                                        <span class="status-indicator position-absolute bottom-0 end-0 rounded-circle border border-dark {% if member.profile.is_online %}bg-success{% else %}bg-secondary{% endif %}" id="status-member-{{ member.username }}" style="width: 9px; height: 9px; display: inline-block;"></span>
+                                    </div>
+                                    <span class="text-light small fw-medium">{{ member.username }}</span>
+                                </div>
+                                <div class="d-flex align-items-center gap-2">
+                                    {% if member in active_room.admins.all %}
+                                        <span class="badge bg-primary text-light font-weight-bold" style="font-size: 0.65rem; padding: 0.2rem 0.4rem;">Admin</span>
+                                    {% else %}
+                                        {% if user in active_room.admins.all %}
+                                            <button
+                                                class="btn btn-sm btn-outline-danger border-0 py-0 px-2 remove-member-btn"
+                                                style="font-size: 0.7rem; line-height: 1.6;"
+                                                title="Remove {{ member.username }} from group"
+                                                onclick="removeMember('{{ active_room.slug }}', {{ member.id }}, '{{ member.username }}', this)"
+                                            >
+                                                <i class="fa-solid fa-user-minus me-1"></i>Remove
+                                            </button>
+                                        {% endif %}
+                                    {% endif %}
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+</div>
+
+<!-- Create Group Modal -->
+<div class="modal fade" id="createGroupModal" tabindex="-1" aria-labelledby="createGroupModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content glass-panel border-secondary border-opacity-25 shadow-lg">
+            <div class="modal-header border-bottom border-secondary border-opacity-10">
+                <h5 class="modal-title text-light fw-bold" id="createGroupModalLabel"><i class="fa-solid fa-users-medical text-primary me-2"></i>Create New Group</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="{% url 'create_group_chat' %}" method="POST" enctype="multipart/form-data">
+                {% csrf_token %}
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label for="group-name" class="form-label text-secondary small">Group Name</label>
+                        <input type="text" name="name" id="group-name" class="form-control glass-input" placeholder="e.g. Work Discussion" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="group-description" class="form-label text-secondary small">Description</label>
+                        <textarea name="description" id="group-description" class="form-control glass-input" rows="2" placeholder="What is this group for?"></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="group-avatar" class="form-label text-secondary small">Group Avatar (Optional)</label>
+                        <input type="file" name="group_avatar" id="group-avatar" class="form-control glass-input" accept="image/*">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label text-secondary small">Select Members</label>
+                        <div class="members-select-list overflow-y-auto bg-dark bg-opacity-25 border border-secondary border-opacity-10 rounded p-2" style="max-height: 150px;">
+                            {% for u in all_users %}
+                                <div class="form-check d-flex align-items-center justify-content-between p-1.5">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <img src="{{ u.profile.avatar_url }}" alt="Avatar" class="rounded-circle border border-secondary border-opacity-25" style="width: 28px; height: 28px; object-fit: cover;">
+                                        <label class="form-check-label text-light small cursor-pointer" for="member-check-{{ u.id }}">
+                                            {{ u.username }} {% if u.first_name %}({{ u.first_name }}){% endif %}
+                                        </label>
+                                    </div>
+                                    <input class="form-check-input glass-check" type="checkbox" name="members" value="{{ u.id }}" id="member-check-{{ u.id }}">
+                                </div>
+                            {% empty %}
+                                <p class="text-secondary small text-center my-3">No other registered users found.</p>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-top border-secondary border-opacity-10 d-flex gap-2">
+                    <button type="button" class="btn btn-outline-secondary border-0 py-2 btn-sm fw-semibold" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary glow-button btn-sm px-4 py-2 fw-semibold">Create Group</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Image Viewer Modal (For full screen image preview in chat) -->
+<div class="modal fade" id="imageViewerModal" tabindex="-1" aria-hidden="true" style="background: rgba(0,0,0,0.85);">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content bg-transparent border-0 shadow-none text-center">
+            <div class="d-flex justify-content-end p-2 position-absolute w-100" style="z-index: 10;">
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close" onclick="closeImageModal()"></button>
+            </div>
+            <img id="modal-image-preview" src="" alt="Full preview" class="img-fluid rounded shadow-lg max-vh-80 mx-auto" style="max-height: 80vh; object-fit: contain;">
+        </div>
+    </div>
+</div>
+
+<!-- Incoming Call Modal -->
+<div class="modal fade" id="incomingCallModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-hidden="true" style="background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(10px);">
+    <div class="modal-dialog modal-dialog-centered" style="max-width: 360px;">
+        <div class="modal-content glass-panel border-secondary border-opacity-25 shadow-lg text-center p-4">
+            <div class="modal-body p-0">
+                <div class="glow-orb glow-orb-3" style="width: 150px; height: 150px; top: 10%; left: 30%;"></div>
+                
+                <!-- Caller Info -->
+                <img id="incoming-call-avatar" src="/static/images/default-avatar.svg" class="rounded-circle border border-primary border-4 mb-3 pulse-animation" style="width: 90px; height: 90px; object-fit: cover;">
+                <h5 id="incoming-call-display-name" class="text-light fw-bold mb-1">Username</h5>
+                <p id="incoming-call-type-text" class="text-secondary small mb-4">Incoming Voice Call...</p>
+                
+                <!-- Accept / Decline Buttons -->
+                <div class="d-flex align-items-center justify-content-center gap-4">
+                    <button type="button" class="btn btn-lg btn-danger rounded-circle d-flex align-items-center justify-content-center text-white" id="decline-call-btn" style="width: 56px; height: 56px; background-color: var(--danger) !important; border: none; box-shadow: 0 4px 15px var(--danger-glow);">
+                        <i class="fa-solid fa-phone-slash fs-5"></i>
+                    </button>
+                    <button type="button" class="btn btn-lg btn-success rounded-circle d-flex align-items-center justify-content-center text-white" id="accept-call-btn" style="width: 56px; height: 56px; background-color: var(--success) !important; border: none; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);">
+                        <i class="fa-solid fa-phone fs-5"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+{% endblock %}
+
+{% block extra_js %}
+<!-- Configuration mapping for JS websocket client -->
+<script>
+    const roomSlug = "{% if active_room %}{{ active_room.slug }}{% else %}global{% endif %}";
+    const currentUsername = "{{ user.username }}";
+    const currentUserId = {{ user.id }};
+    const targetUsername = "{% if active_room and not active_room.is_group %}{% for m in active_room.members.all %}{% if m != user %}{{ m.username }}{% endif %}{% endfor %}{% endif %}";
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+    const wsUrl = wsProtocol + window.location.host + '/ws/chat/' + roomSlug + '/';
+    const fileUploadUrl = "{% if active_room %}{% url 'upload_file_api' room_slug=active_room.slug %}{% else %}{% endif %}";
+</script>
+<script src="/static/js/chat.js"></script>
+
+
+<script>
+    // Handles toggles for sidebars, details, and AJAX search
+    
+    // Sidebar responsive toggle
+    function toggleSidebar() {
+        const sidebar = document.getElementById('sidebar');
+        sidebar.classList.toggle('show-sidebar');
+    }
+
+    // Toggle info panel
+    function toggleDetailsPane() {
+        const pane = document.getElementById('details-pane');
+        if (pane) {
+            pane.classList.toggle('d-none');
+        }
+    }
+
+    // Open Sidebar search focus
+    function toggleSidebarSearch() {
+        const searchInput = document.getElementById('user-search-input');
+        if (searchInput) {
+            searchInput.focus();
+        }
+    }
+
+    // User Search Input Handling
+    const searchInput = document.getElementById('user-search-input');
+    const searchResults = document.getElementById('search-results-dropdown');
+
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            const query = this.value.trim();
+            if (query.length < 1) {
+                searchResults.innerHTML = '';
+                searchResults.classList.add('d-none');
+                return;
+            }
+
+            fetch(`/api/users/search/?q=${encodeURIComponent(query)}`)
+                .then(response => response.json())
+                .then(data => {
+                    searchResults.innerHTML = '';
+                    if (data.users && data.users.length > 0) {
+                        searchResults.classList.remove('d-none');
+                        data.users.forEach(u => {
+                            const resItem = document.createElement('a');
+                            resItem.href = `/chat/private/${u.id}/`;
+                            resItem.className = 'search-result-item d-flex align-items-center gap-3 p-2 text-decoration-none text-light border-bottom border-secondary border-opacity-10';
+                            resItem.innerHTML = `
+                                <img src="${u.avatar_url}" alt="${u.username}" class="rounded-circle" style="width: 32px; height: 32px; object-fit: cover;">
+                                <div>
+                                    <h6 class="mb-0 small fw-semibold text-light">${u.username}</h6>
+                                    <span class="text-secondary small" style="font-size: 0.72rem;">${u.full_name || 'Start Chatting'}</span>
+                                </div>
+                            `;
+                            searchResults.appendChild(resItem);
+                        });
+                    } else {
+                        searchResults.classList.remove('d-none');
+                        searchResults.innerHTML = '<div class="text-center text-secondary py-2 small">No users found</div>';
+                    }
+                })
+                .catch(err => console.error("Search error: ", err));
+        });
+
+        // Hide results dropdown on click outside
+        document.addEventListener('click', function(e) {
+            if (!searchInput.contains(e.target) && !searchResults.contains(e.target)) {
+                searchResults.classList.add('d-none');
+            }
+        });
+    }
+
+    // Full screen image preview modal helper
+    let imageModal = null;
+    function openImageModal(imgUrl) {
+        const modalEl = document.getElementById('imageViewerModal');
+        const modalImg = document.getElementById('modal-image-preview');
+        modalImg.src = imgUrl;
+        
+        imageModal = new bootstrap.Modal(modalEl);
+        imageModal.show();
+    }
+
+    function closeImageModal() {
+        if (imageModal) {
+            imageModal.hide();
+        }
+    }
+
+    // ── Admin: Remove a member from the group ─────────────────────────────────
+    function removeMember(roomSlug, userId, username, btn) {
+        if (!confirm(`Remove "${username}" from this group?`)) return;
+
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i>Removing...';
+
+        const csrfToken = document.cookie.split(';')
+            .map(c => c.trim())
+            .find(c => c.startsWith('csrftoken='))
+            ?.split('=')[1] || '';
+
+        fetch(`/chat/group/${roomSlug}/remove/${userId}/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken,
+                'Content-Type': 'application/json',
+            },
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                // Animate & remove the member row from the details pane
+                const row = document.getElementById(`member-row-${userId}`);
+                if (row) {
+                    row.style.transition = 'opacity 0.3s ease, max-height 0.3s ease';
+                    row.style.opacity = '0';
+                    row.style.maxHeight = '0';
+                    row.style.overflow = 'hidden';
+                    setTimeout(() => row.remove(), 350);
+                }
+            } else {
+                alert(data.error || 'Could not remove this member.');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa-solid fa-user-minus me-1"></i>Remove';
+            }
+        })
+        .catch(() => {
+            alert('Network error. Please try again.');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-user-minus me-1"></i>Remove';
+        });
+    }
+</script>
+{% endblock %}

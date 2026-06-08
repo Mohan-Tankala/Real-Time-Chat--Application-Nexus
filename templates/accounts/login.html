@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+
+{% block title %}Login - Nexus Chat{% endblock %}
+
+{% block content %}
+<div class="auth-wrapper d-flex align-items-center justify-content-center min-vh-100 position-relative overflow-hidden">
+    <!-- Ambient Glow effects -->
+    <div class="glow-orb glow-orb-1"></div>
+    <div class="glow-orb glow-orb-2"></div>
+    
+    <div class="card auth-card glass-panel p-4 p-md-5 shadow-lg border-0">
+        <div class="text-center mb-4">
+            <div class="logo-container mb-3">
+                <i class="fa-solid fa-comments-dollar text-primary display-4"></i>
+            </div>
+            <h2 class="auth-title fw-bold text-light">Welcome to Nexus</h2>
+            <p class="text-secondary small">Real-time collaboration platform</p>
+        </div>
+
+        <form method="POST">
+            {% csrf_token %}
+            
+            <div class="mb-3">
+                <label for="id_username" class="form-label text-secondary small">Username</label>
+                <div class="input-group">
+                    <span class="input-group-text border-0 glass-input-icon"><i class="fa-regular fa-user text-secondary"></i></span>
+                    <input type="text" name="username" id="id_username" class="form-control glass-input border-0" placeholder="Enter username" required autofocus>
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <div class="d-flex justify-content-between">
+                    <label for="id_password" class="form-label text-secondary small">Password</label>
+                </div>
+                <div class="input-group">
+                    <span class="input-group-text border-0 glass-input-icon"><i class="fa-solid fa-lock text-secondary"></i></span>
+                    <input type="password" name="password" id="id_password" class="form-control glass-input border-0" placeholder="••••••••" required>
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary w-100 py-2.5 fw-semibold glow-button mb-3">
+                Sign In <i class="fa-solid fa-arrow-right-to-bracket ms-2"></i>
+            </button>
+        </form>
+
+        <div class="text-center mt-3">
+            <span class="text-secondary small">Don't have an account? </span>
+            <a href="{% url 'signup' %}" class="text-primary small fw-semibold text-decoration-none hover-link">Create Account</a>
+        </div>
+    </div>
+</div>
+{% endblock %}
