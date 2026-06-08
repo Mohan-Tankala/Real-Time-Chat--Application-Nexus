@@ -3,7 +3,7 @@ services:
   - type: web
     name: nexus-chat-app
     env: python
-    plan: starter
+    plan: free
     buildCommand: "./build.sh"
     startCommand: "daphne -b 0.0.0.0 -p $PORT chat_app.asgi:application"
     envVars:
