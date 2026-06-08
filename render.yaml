@@ -22,11 +22,11 @@ services:
       - key: SECRET_KEY
         generateValue: true
 
-# 2. Redis Service for Channels Layer
-redis:
-  name: nexus-redis
-  plan: free
-  ipAllowList: [] # Only allow internal Render services to connect
+  # 2. Redis Service for Channels Layer
+  - type: redis
+    name: nexus-redis
+    plan: free
+    ipAllowList: [] # Only allow internal Render services to connect
 
 # 3. PostgreSQL Database Service
 databases:
