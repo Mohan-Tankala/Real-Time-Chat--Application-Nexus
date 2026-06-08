@@ -16,14 +16,15 @@ services:
           name: nexus-db
           property: connectionString
       - key: REDIS_URL
-        fromRedis:
+        fromService:
           name: nexus-redis
+          type: keyvalue
           property: connectionString
       - key: SECRET_KEY
         generateValue: true
 
   # 2. Redis Service for Channels Layer
-  - type: redis
+  - type: keyvalue
     name: nexus-redis
     plan: free
     ipAllowList: [] # Only allow internal Render services to connect
