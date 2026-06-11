@@ -44,6 +44,24 @@ function connectWebSocket() {
             handleMessageDelete(data.message_id);
         } else if (eventType === 'message_read') {
             handleMessageReadReceipt(data.message_id, data.username);
+        } else if (eventType === 'incoming_call') {
+            handleIncomingCall(data);
+        } else if (eventType === 'call_accepted') {
+            handleCallAccepted(data);
+        } else if (eventType === 'call_rejected') {
+            handleCallRejected(data);
+        } else if (eventType === 'call_ended') {
+            handleCallEnded(data);
+        } else if (eventType === 'offer') {
+            handleOffer(data.offer);
+        } else if (eventType === 'answer') {
+            handleAnswer(data.answer);
+        } else if (eventType === 'ice_candidate') {
+            handleIceCandidate(data.candidate);
+        } else if (eventType === 'screen_share_started') {
+            handleRemoteScreenShareStarted();
+        } else if (eventType === 'screen_share_stopped') {
+            handleRemoteScreenShareStopped();
         }
     };
 
@@ -516,6 +534,8 @@ let isMuted = false;
 let isCamOff = false;
 let callerUsername = null;
 let incomingCallModalInstance = null;
+let savedOffer = null;
+let remoteIceCandidatesQueue = [];
 
 const iceServersConfig = {
     iceServers: [
@@ -524,6 +544,17 @@ const iceServersConfig = {
         }
     ]
 };
+
+function processQueuedIceCandidates() {
+    console.log("Processing queued ICE candidates:", remoteIceCandidatesQueue.length);
+    while (remoteIceCandidatesQueue.length > 0) {
+        const candidate = remoteIceCandidatesQueue.shift();
+        if (peerConnection) {
+            peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
+                .catch(err => console.error("Failed to add queued ICE candidate:", err));
+        }
+    }
+}
 
 // Start WebRTC Call (Voice or Video)
 function startCall(type) {
@@ -603,13 +634,31 @@ function startCall(type) {
             if (type === 'video' && localVideo) {
                 localVideo.srcObject = stream;
             }
+            console.log("STREAM ADDED (Local stream initialized)");
             
-            // Broadcast call initiation message to target user via channels
+            // Create Peer Connection and attach tracks
+            createPeerConnection(targetUsername);
+            console.log("PEER CONNECTION CREATED");
+            
+            localStream.getTracks().forEach(track => {
+                peerConnection.addTrack(track, localStream);
+            });
+            
+            // Create offer
+            return peerConnection.createOffer();
+        })
+        .then(offer => {
+            console.log("OFFER CREATED", offer);
+            return peerConnection.setLocalDescription(offer).then(() => offer);
+        })
+        .then(offer => {
+            // Broadcast call initiation message to target user via channels (including offer!)
             chatSocket.send(JSON.stringify({
                 'type': 'call_user',
                 'target_username': targetUsername,
                 'call_type': type,
-                'room_slug': roomSlug
+                'room_slug': roomSlug,
+                'offer': offer
             }));
             
             isCallActive = true;
@@ -621,12 +670,13 @@ function startCall(type) {
         });
 }
 
-// Handle Incoming Call
+// // Handle Incoming Call
 function handleIncomingCall(data) {
+    console.log("CALL RECEIVED", data);
     if (isCallActive) {
         // Automatically reject if busy in another call
         chatSocket.send(JSON.stringify({
-            'type': 'call_rejected',
+            'type': 'reject_call',
             'caller_username': data.caller_username,
             'call_id': data.call_id
         }));
@@ -636,6 +686,7 @@ function handleIncomingCall(data) {
     callId = data.call_id;
     callType = data.call_type;
     callerUsername = data.caller_username;
+    savedOffer = data.offer; // Save offer for setRemoteDescription later!
     isMuted = false;
     isCamOff = false;
     
@@ -658,6 +709,7 @@ function handleIncomingCall(data) {
 
 // Accept call
 function acceptCall() {
+    console.log("CALL ACCEPTED (by clicking Accept)");
     if (incomingCallModalInstance) {
         incomingCallModalInstance.hide();
     }
@@ -717,21 +769,46 @@ function acceptCall() {
             if (callType === 'video' && localVideo) {
                 localVideo.srcObject = stream;
             }
+            console.log("STREAM ADDED (Local stream initialized)");
+            
+            // Create Peer Connection and attach tracks
+            createPeerConnection(callerUsername);
+            
+            localStream.getTracks().forEach(track => {
+                peerConnection.addTrack(track, localStream);
+            });
             
             // Notify caller that call was accepted
             chatSocket.send(JSON.stringify({
-                'type': 'call_accepted',
+                'type': 'accept_call',
                 'caller_username': callerUsername,
                 'call_id': callId
             }));
             
             isCallActive = true;
             
-            // Create Peer Connection and attach tracks
-            createPeerConnection(callerUsername);
-            localStream.getTracks().forEach(track => {
-                peerConnection.addTrack(track, localStream);
-            });
+            if (savedOffer) {
+                console.log("Setting remote description with saved offer...");
+                return peerConnection.setRemoteDescription(new RTCSessionDescription(savedOffer))
+                    .then(() => {
+                        console.log("Remote description set. Creating answer...");
+                        processQueuedIceCandidates();
+                        return peerConnection.createAnswer();
+                    })
+                    .then(answer => {
+                        console.log("ANSWER CREATED", answer);
+                        return peerConnection.setLocalDescription(answer).then(() => answer);
+                    })
+                    .then(answer => {
+                        chatSocket.send(JSON.stringify({
+                            'type': 'answer',
+                            'answer': answer,
+                            'target_username': callerUsername
+                        }));
+                    });
+            } else {
+                console.error("No saved offer found when accepting call.");
+            }
         })
         .catch(err => {
             console.error("Local media capture failed:", err);
@@ -747,7 +824,7 @@ function rejectCall() {
     }
     
     chatSocket.send(JSON.stringify({
-        'type': 'call_rejected',
+        'type': 'reject_call',
         'caller_username': callerUsername,
         'call_id': callId
     }));
@@ -757,32 +834,15 @@ function rejectCall() {
 
 // Handle Call Accepted on Caller end
 function handleCallAccepted(data) {
+    console.log("CALL ACCEPTED", data);
     const callStatusText = document.getElementById('call-status-text');
     if (callStatusText) callStatusText.innerText = "Connecting...";
-    
-    // Create Peer Connection and attach tracks
-    createPeerConnection(data.receiver_username);
-    localStream.getTracks().forEach(track => {
-        peerConnection.addTrack(track, localStream);
-    });
-    
-    // Create offer and send to recipient
-    peerConnection.createOffer()
-        .then(offer => {
-            return peerConnection.setLocalDescription(offer).then(() => offer);
-        })
-        .then(offer => {
-            chatSocket.send(JSON.stringify({
-                'type': 'offer',
-                'offer': offer,
-                'target_username': data.receiver_username
-            }));
-        })
-        .catch(err => console.error("WebRTC Offer generation failed:", err));
+    // No need to create and send offer here, it was already sent in startCall
 }
 
 // Handle Call Rejected on Caller end
 function handleCallRejected(data) {
+    console.log("CALL REJECTED", data);
     const callStatusText = document.getElementById('call-status-text');
     if (callStatusText) callStatusText.innerText = "Call Busy / Rejected";
     
@@ -793,6 +853,7 @@ function handleCallRejected(data) {
 
 // Handle Call Ended
 function handleCallEnded(data) {
+    console.log("CALL ENDED", data);
     const callStatusText = document.getElementById('call-status-text');
     if (callStatusText) callStatusText.innerText = "Call Ended";
     
@@ -804,10 +865,12 @@ function handleCallEnded(data) {
 // Create RTCPeerConnection
 function createPeerConnection(targetUser) {
     peerConnection = new RTCPeerConnection(iceServersConfig);
+    console.log("PEER CONNECTION CREATED");
     
     // Send ICE candidates to target user
     peerConnection.onicecandidate = function(event) {
         if (event.candidate) {
+            console.log("ICE CANDIDATE SENT", event.candidate);
             chatSocket.send(JSON.stringify({
                 'type': 'ice_candidate',
                 'candidate': event.candidate,
@@ -818,6 +881,7 @@ function createPeerConnection(targetUser) {
     
     // Handle remote media stream arrival
     peerConnection.ontrack = function(event) {
+        console.log("STREAM ADDED (Remote stream track received)");
         const remoteVideo = document.getElementById('remote-video');
         if (remoteVideo && event.streams && event.streams[0]) {
             remoteVideo.srcObject = event.streams[0];
@@ -848,13 +912,18 @@ function createPeerConnection(targetUser) {
 
 // Handle Offer
 function handleOffer(offer) {
-    if (!peerConnection) return;
-    
+    console.log("OFFER RECEIVED", offer);
+    if (!peerConnection) {
+        createPeerConnection(callerUsername || targetUsername);
+    }
     peerConnection.setRemoteDescription(new RTCSessionDescription(offer))
         .then(() => {
+            console.log("Remote description set via offer event. Creating answer...");
+            processQueuedIceCandidates();
             return peerConnection.createAnswer();
         })
         .then(answer => {
+            console.log("ANSWER CREATED", answer);
             return peerConnection.setLocalDescription(answer).then(() => answer);
         })
         .then(answer => {
@@ -864,22 +933,31 @@ function handleOffer(offer) {
                 'target_username': callerUsername || targetUsername
             }));
         })
-        .catch(err => console.error("WebRTC Answer generation failed:", err));
+        .catch(err => console.error("WebRTC Offer event handling failed:", err));
 }
 
 // Handle Answer
 function handleAnswer(answer) {
+    console.log("ANSWER RECEIVED", answer);
     if (peerConnection) {
         peerConnection.setRemoteDescription(new RTCSessionDescription(answer))
-            .catch(err => console.error("Failed to set remote description:", err));
+            .then(() => {
+                console.log("Remote description set via answer event. Processing queued ICE candidates...");
+                processQueuedIceCandidates();
+            })
+            .catch(err => console.error("Failed to set remote description via answer event:", err));
     }
 }
 
 // Handle ICE Candidate
 function handleIceCandidate(candidate) {
-    if (peerConnection) {
+    console.log("ICE CANDIDATE RECEIVED", candidate);
+    if (peerConnection && peerConnection.remoteDescription && peerConnection.remoteDescription.type) {
         peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
             .catch(err => console.error("Failed to add ICE candidate:", err));
+    } else {
+        console.log("Queueing remote ICE candidate as remoteDescription is not set yet");
+        remoteIceCandidatesQueue.push(candidate);
     }
 }
 
@@ -890,7 +968,7 @@ function endCall(notifyOther = true) {
         const duration = callStartTime ? Math.round((Date.now() - callStartTime) / 1000) : 0;
         if (target) {
             chatSocket.send(JSON.stringify({
-                'type': 'call_ended',
+                'type': 'end_call',
                 'target_username': target,
                 'call_id': callId,
                 'duration': duration
@@ -932,6 +1010,8 @@ function resetCallState() {
     callType = null;
     isCallActive = false;
     callerUsername = null;
+    savedOffer = null;
+    remoteIceCandidatesQueue = [];
 }
 
 // Microphone Toggle

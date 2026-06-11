@@ -151,7 +151,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
                         'caller_display': f"{self.user.first_name} {self.user.last_name}".strip() or self.user.username,
                         'room_slug': room_slug,
                         'call_type': call_type,
-                        'call_id': call_id
+                        'call_id': call_id,
+                        'offer': data.get('offer')
                     }
                 }
             )
@@ -160,7 +161,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 'call_id': call_id
             }))
 
-        elif event_type == 'call_accepted':
+        elif event_type in ['accept_call', 'call_accepted']:
             caller_username = data.get('caller_username')
             call_id = data.get('call_id')
             await self.channel_layer.group_send(
@@ -175,7 +176,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 }
             )
 
-        elif event_type == 'call_rejected':
+        elif event_type in ['reject_call', 'call_rejected']:
             caller_username = data.get('caller_username')
             call_id = data.get('call_id')
             await self.update_call_status(call_id, 'rejected')
@@ -191,7 +192,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 }
             )
 
-        elif event_type == 'call_ended':
+        elif event_type in ['end_call', 'call_ended']:
             target_username = data.get('target_username')
             call_id = data.get('call_id')
             duration = data.get('duration', 0)
