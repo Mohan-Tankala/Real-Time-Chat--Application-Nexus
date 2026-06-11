@@ -3,6 +3,7 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.contrib.auth.models import User
 from django.utils import timezone
+from django.db import close_old_connections
 from .models import ChatRoom, Message, MessageReceipt, CallHistory
 from notifications.models import Notification
 from accounts.models import UserProfile
@@ -47,21 +48,30 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def disconnect(self, close_code):
         if hasattr(self, 'room_group_name'):
             # Update status to offline and broadcast
-            await self.update_user_status(self.user, False)
-            await self.broadcast_user_status(False)
+            try:
+                await self.update_user_status(self.user, False)
+                await self.broadcast_user_status(False)
+            except Exception as e:
+                print(f"Error updating user status on disconnect: {e}")
 
             # Leave room group
-            await self.channel_layer.group_discard(
-                self.room_group_name,
-                self.channel_name
-            )
+            try:
+                await self.channel_layer.group_discard(
+                    self.room_group_name,
+                    self.channel_name
+                )
+            except Exception as e:
+                print(f"Error leaving room group on disconnect: {e}")
 
         if hasattr(self, 'user_group_name'):
             # Leave user-specific group
-            await self.channel_layer.group_discard(
-                self.user_group_name,
-                self.channel_name
-            )
+            try:
+                await self.channel_layer.group_discard(
+                    self.user_group_name,
+                    self.channel_name
+                )
+            except Exception as e:
+                print(f"Error leaving user group on disconnect: {e}")
 
 
     async def receive(self, text_data):
@@ -300,6 +310,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
     # Database sync wrappers
     @database_sync_to_async
     def verify_room_membership(self, user, slug):
+        close_old_connections()
         try:
             room = ChatRoom.objects.get(slug=slug)
             return room.members.filter(id=user.id).exists()
@@ -308,10 +319,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def get_user_rooms(self, user):
+        close_old_connections()
         return list(user.chat_rooms.values_list('slug', flat=True))
 
     @database_sync_to_async
     def update_user_status(self, user, is_online):
+        close_old_connections()
         profile = user.profile
         profile.is_online = is_online
         profile.last_seen = timezone.now()
@@ -319,6 +332,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def save_message(self, sender, room_slug, content, file_id=None):
+        close_old_connections()
         room = ChatRoom.objects.get(slug=room_slug)
         
         if file_id:
@@ -362,6 +376,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         Allow a user to edit *their most recent* message within 5 minutes.
         Returns True on success, False otherwise.
         """
+        close_old_connections()
         from datetime import timedelta
         # Retrieve the message the user wants to edit
         try:
@@ -387,6 +402,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def delete_message(self, user, message_id):
+        close_old_connections()
         try:
             msg = Message.objects.get(id=message_id, sender=user)
             msg.delete()
@@ -396,6 +412,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def mark_message_as_read(self, user, message_id):
+        close_old_connections()
         try:
             msg = Message.objects.get(id=message_id)
             if msg.sender != user:
@@ -413,6 +430,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def create_call_history(self, caller, receiver_username, call_type):
+        close_old_connections()
         try:
             receiver = User.objects.get(username=receiver_username)
             call = CallHistory.objects.create(
@@ -427,6 +445,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def update_call_status(self, call_id, status, duration=None):
+        close_old_connections()
         if not call_id:
             return
         try:
