@@ -539,9 +539,11 @@ let remoteIceCandidatesQueue = [];
 
 const iceServersConfig = {
     iceServers: [
-        {
-            urls: "stun:stun.l.google.com:19302"
-        }
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" },
+        { urls: "stun:stun2.l.google.com:19302" },
+        { urls: "stun:stun3.l.google.com:19302" },
+        { urls: "stun:stun4.l.google.com:19302" }
     ]
 };
 
@@ -629,9 +631,22 @@ function startCall(type) {
     };
     
     navigator.mediaDevices.getUserMedia(constraints)
+        .catch(err => {
+            console.warn("Local media capture failed with initial constraints, trying fallback...", err);
+            if (constraints.video) {
+                // Video failed, try audio-only
+                callType = 'voice';
+                if (videoGrid) videoGrid.classList.add('d-none');
+                if (callAvatar) callAvatar.classList.remove('d-none');
+                if (toggleCamBtn) toggleCamBtn.classList.add('d-none');
+                if (shareScreenBtn) shareScreenBtn.classList.add('d-none');
+                return navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            }
+            throw err;
+        })
         .then(stream => {
             localStream = stream;
-            if (type === 'video' && localVideo) {
+            if (callType === 'video' && localVideo) {
                 localVideo.srcObject = stream;
             }
             console.log("STREAM ADDED (Local stream initialized)");
@@ -656,7 +671,7 @@ function startCall(type) {
             chatSocket.send(JSON.stringify({
                 'type': 'call_user',
                 'target_username': targetUsername,
-                'call_type': type,
+                'call_type': callType,
                 'room_slug': roomSlug,
                 'offer': offer
             }));
@@ -764,6 +779,26 @@ function acceptCall() {
     };
     
     navigator.mediaDevices.getUserMedia(constraints)
+        .catch(err => {
+            console.warn("Local media capture failed with initial constraints, trying fallback...", err);
+            if (constraints.video) {
+                // Video failed, try audio-only
+                callType = 'voice';
+                
+                const videoGrid = document.getElementById('video-grid');
+                const callAvatar = document.getElementById('call-avatar');
+                const toggleCamBtn = document.getElementById('toggle-cam-btn');
+                const shareScreenBtn = document.getElementById('share-screen-btn');
+                
+                if (videoGrid) videoGrid.classList.add('d-none');
+                if (callAvatar) callAvatar.classList.remove('d-none');
+                if (toggleCamBtn) toggleCamBtn.classList.add('d-none');
+                if (shareScreenBtn) shareScreenBtn.classList.add('d-none');
+                
+                return navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            }
+            throw err;
+        })
         .then(stream => {
             localStream = stream;
             if (callType === 'video' && localVideo) {
