@@ -46,6 +46,9 @@ function connectWebSocket() {
             handleMessageReadReceipt(data.message_id, data.username);
         } else if (eventType === 'incoming_call') {
             handleIncomingCall(data);
+        } else if (eventType === 'call_initiated') {
+            callId = data.call_id;
+            console.log("CALL INITIATED. Call ID set to:", callId);
         } else if (eventType === 'call_accepted') {
             handleCallAccepted(data);
         } else if (eventType === 'call_rejected') {
@@ -174,7 +177,9 @@ function handleIncomingMessage(msg) {
 
     // Append to DOM before typing indicator
     const typingIndicator = document.getElementById('typing-indicator');
-    msgListPane.insertBefore(wrapper, typingIndicator);
+    if (msgListPane) {
+        msgListPane.insertBefore(wrapper, typingIndicator);
+    }
     
     scrollToBottom();
 
@@ -327,7 +332,9 @@ function handleMessageReadReceipt(messageId, username) {
 
 // Auto scroll messages container
 function scrollToBottom() {
-    msgListPane.scrollTop = msgListPane.scrollHeight;
+    if (msgListPane) {
+        msgListPane.scrollTop = msgListPane.scrollHeight;
+    }
 }
 
 // Enter inline edit message mode
@@ -905,7 +912,7 @@ function createPeerConnection(targetUser) {
     // Send ICE candidates to target user
     peerConnection.onicecandidate = function(event) {
         if (event.candidate) {
-            console.log("ICE CANDIDATE SENT", event.candidate);
+            console.log("ICE CANDIDATE SENT/RECEIVED (Sent candidate)", event.candidate);
             chatSocket.send(JSON.stringify({
                 'type': 'ice_candidate',
                 'candidate': event.candidate,
@@ -918,8 +925,20 @@ function createPeerConnection(targetUser) {
     peerConnection.ontrack = function(event) {
         console.log("STREAM ADDED (Remote stream track received)");
         const remoteVideo = document.getElementById('remote-video');
-        if (remoteVideo && event.streams && event.streams[0]) {
-            remoteVideo.srcObject = event.streams[0];
+        if (remoteVideo) {
+            if (event.streams && event.streams[0]) {
+                if (remoteVideo.srcObject !== event.streams[0]) {
+                    remoteVideo.srcObject = event.streams[0];
+                    console.log("Attached event.streams[0] to remote-video");
+                }
+            } else {
+                if (!remoteVideo.srcObject) {
+                    remoteVideo.srcObject = new MediaStream();
+                    console.log("Created new MediaStream for remote-video");
+                }
+                remoteVideo.srcObject.addTrack(event.track);
+                console.log("Added track to remote-video MediaStream:", event.track.kind);
+            }
         }
     };
     
@@ -986,7 +1005,7 @@ function handleAnswer(answer) {
 
 // Handle ICE Candidate
 function handleIceCandidate(candidate) {
-    console.log("ICE CANDIDATE RECEIVED", candidate);
+    console.log("ICE CANDIDATE SENT/RECEIVED (Received candidate)", candidate);
     if (peerConnection && peerConnection.remoteDescription && peerConnection.remoteDescription.type) {
         peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
             .catch(err => console.error("Failed to add ICE candidate:", err));
@@ -1322,8 +1341,11 @@ function formatCallTime(isoString) {
     return d.toLocaleDateString([], options);
 }
 
+
+
+
 // Attach UI Event Listeners for Call Controls
-document.addEventListener('DOMContentLoaded', () => {
+function initCallEventListeners() {
     const startVoiceBtn = document.getElementById('start-voice-call');
     const startVideoBtn = document.getElementById('start-video-call');
     const acceptCallBtn = document.getElementById('accept-call-btn');
@@ -1363,8 +1385,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
-});
+}
 
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initCallEventListeners);
+} else {
+    initCallEventListeners();
+}
 
 // Initialize WebRTC and sockets on page load
 connectWebSocket();

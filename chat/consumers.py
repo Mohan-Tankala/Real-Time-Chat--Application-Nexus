@@ -33,7 +33,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
         # Join user-specific group for real-time signaling/calls
-        self.user_group_name = f"user_{self.user.username}"
+        self.user_group_name = f"user_{self.user.username.lower()}"
         await self.channel_layer.group_add(
             self.user_group_name,
             self.channel_name
@@ -151,7 +151,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             room_slug = data.get('room_slug')
             call_id = await self.create_call_history(self.user, target_username, call_type)
             await self.channel_layer.group_send(
-                f"user_{target_username}",
+                f"user_{target_username.lower()}",
                 {
                     'type': 'user_call_event',
                     'payload': {
@@ -175,7 +175,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             caller_username = data.get('caller_username')
             call_id = data.get('call_id')
             await self.channel_layer.group_send(
-                f"user_{caller_username}",
+                f"user_{caller_username.lower()}",
                 {
                     'type': 'user_call_event',
                     'payload': {
@@ -191,7 +191,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             call_id = data.get('call_id')
             await self.update_call_status(call_id, 'rejected')
             await self.channel_layer.group_send(
-                f"user_{caller_username}",
+                f"user_{caller_username.lower()}",
                 {
                     'type': 'user_call_event',
                     'payload': {
@@ -208,7 +208,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             duration = data.get('duration', 0)
             await self.update_call_status(call_id, 'completed', duration)
             await self.channel_layer.group_send(
-                f"user_{target_username}",
+                f"user_{target_username.lower()}",
                 {
                     'type': 'user_call_event',
                     'payload': {
@@ -218,10 +218,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 }
             )
 
-        elif event_type in ['offer', 'answer', 'ice_candidate', 'screen_share_started', 'screen_share_stopped']:
+        elif event_type in ['offer', 'answer', 'ice_candidate', 'incoming_call', 'screen_share_started', 'screen_share_stopped']:
             target_username = data.get('target_username')
             await self.channel_layer.group_send(
-                f"user_{target_username}",
+                f"user_{target_username.lower()}",
                 {
                     'type': 'user_call_event',
                     'payload': data
