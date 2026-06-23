@@ -149,6 +149,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             target_username = data.get('target_username')
             call_type = data.get('call_type', 'voice')
             room_slug = data.get('room_slug')
+            print(f"[Django Server] CALL INITIATED from {self.user.username} to {target_username}")
             call_id = await self.create_call_history(self.user, target_username, call_type)
             await self.channel_layer.group_send(
                 f"user_{target_username.lower()}",
@@ -174,6 +175,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         elif event_type in ['accept_call', 'call_accepted']:
             caller_username = data.get('caller_username')
             call_id = data.get('call_id')
+            print(f"[Django Server] CALL ACCEPTED by {self.user.username} for caller {caller_username}")
             await self.channel_layer.group_send(
                 f"user_{caller_username.lower()}",
                 {
@@ -189,6 +191,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         elif event_type in ['reject_call', 'call_rejected']:
             caller_username = data.get('caller_username')
             call_id = data.get('call_id')
+            print(f"[Django Server] CALL REJECTED by {self.user.username} for caller {caller_username}")
             await self.update_call_status(call_id, 'rejected')
             await self.channel_layer.group_send(
                 f"user_{caller_username.lower()}",
@@ -206,6 +209,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             target_username = data.get('target_username')
             call_id = data.get('call_id')
             duration = data.get('duration', 0)
+            print(f"[Django Server] CALL ENDED by {self.user.username} for target {target_username}")
             await self.update_call_status(call_id, 'completed', duration)
             await self.channel_layer.group_send(
                 f"user_{target_username.lower()}",
@@ -220,6 +224,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         elif event_type in ['offer', 'answer', 'ice_candidate', 'incoming_call', 'screen_share_started', 'screen_share_stopped']:
             target_username = data.get('target_username')
+            if event_type == 'offer':
+                print(f"[Django Server] WebRTC OFFER sent from {self.user.username} to {target_username}")
+            elif event_type == 'answer':
+                print(f"[Django Server] WebRTC ANSWER sent from {self.user.username} to {target_username}")
+            elif event_type == 'ice_candidate':
+                print(f"[Django Server] ICE CANDIDATE exchanged from {self.user.username} to {target_username}")
             await self.channel_layer.group_send(
                 f"user_{target_username.lower()}",
                 {

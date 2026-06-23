@@ -532,6 +532,7 @@ function escapeJS(str) {
 let peerConnection = null;
 let localStream = null;
 let screenStream = null;
+let screenSender = null;
 let callId = null;
 let callType = null; // 'voice' or 'video'
 let isCallActive = false;
@@ -571,6 +572,7 @@ function startCall(type) {
         alert("No participant found to call.");
         return;
     }
+    console.log("CALL INITIATED");
     
     callType = type;
     isMuted = false;
@@ -656,14 +658,15 @@ function startCall(type) {
             if (callType === 'video' && localVideo) {
                 localVideo.srcObject = stream;
             }
+            console.log("LOCAL STREAM READY");
             console.log("STREAM ADDED (Local stream initialized)");
             
             // Create Peer Connection and attach tracks
             createPeerConnection(targetUsername);
-            console.log("PEER CONNECTION CREATED");
             
             localStream.getTracks().forEach(track => {
                 peerConnection.addTrack(track, localStream);
+                console.log("TRACK ADDED:", track.kind);
             });
             
             // Create offer
@@ -682,6 +685,7 @@ function startCall(type) {
                 'room_slug': roomSlug,
                 'offer': offer
             }));
+            console.log("OFFER SENT");
             
             isCallActive = true;
         })
@@ -695,6 +699,9 @@ function startCall(type) {
 // // Handle Incoming Call
 function handleIncomingCall(data) {
     console.log("CALL RECEIVED", data);
+    if (data.offer) {
+        console.log("OFFER RECEIVED", data.offer);
+    }
     if (isCallActive) {
         // Automatically reject if busy in another call
         chatSocket.send(JSON.stringify({
@@ -811,6 +818,7 @@ function acceptCall() {
             if (callType === 'video' && localVideo) {
                 localVideo.srcObject = stream;
             }
+            console.log("LOCAL STREAM READY");
             console.log("STREAM ADDED (Local stream initialized)");
             
             // Create Peer Connection and attach tracks
@@ -818,6 +826,7 @@ function acceptCall() {
             
             localStream.getTracks().forEach(track => {
                 peerConnection.addTrack(track, localStream);
+                console.log("TRACK ADDED:", track.kind);
             });
             
             // Notify caller that call was accepted
@@ -847,6 +856,7 @@ function acceptCall() {
                             'answer': answer,
                             'target_username': callerUsername
                         }));
+                        console.log("ANSWER SENT");
                     });
             } else {
                 console.error("No saved offer found when accepting call.");
@@ -912,6 +922,7 @@ function createPeerConnection(targetUser) {
     // Send ICE candidates to target user
     peerConnection.onicecandidate = function(event) {
         if (event.candidate) {
+            console.log("ICE GENERATED", event.candidate);
             console.log("ICE CANDIDATE SENT/RECEIVED (Sent candidate)", event.candidate);
             chatSocket.send(JSON.stringify({
                 'type': 'ice_candidate',
@@ -923,6 +934,7 @@ function createPeerConnection(targetUser) {
     
     // Handle remote media stream arrival
     peerConnection.ontrack = function(event) {
+        console.log("REMOTE STREAM RECEIVED");
         console.log("STREAM ADDED (Remote stream track received)");
         const remoteVideo = document.getElementById('remote-video');
         if (remoteVideo) {
@@ -949,6 +961,7 @@ function createPeerConnection(targetUser) {
         
         switch (peerConnection.connectionState) {
             case "connected":
+                console.log("CALL CONNECTED");
                 if (callStatusText) callStatusText.innerText = "Connected";
                 if (callTimer) callTimer.classList.remove('d-none');
                 startCallTimer();
@@ -1005,6 +1018,7 @@ function handleAnswer(answer) {
 
 // Handle ICE Candidate
 function handleIceCandidate(candidate) {
+    console.log("ICE RECEIVED", candidate);
     console.log("ICE CANDIDATE SENT/RECEIVED (Received candidate)", candidate);
     if (peerConnection && peerConnection.remoteDescription && peerConnection.remoteDescription.type) {
         peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
@@ -1125,10 +1139,16 @@ function shareScreen() {
             
             if (videoSender) {
                 videoSender.replaceTrack(screenTrack);
+            } else {
+                screenSender = peerConnection.addTrack(screenTrack, screenStream);
             }
             
             // Show local preview of screen sharing
             const localVideo = document.getElementById('local-video');
+            const videoGrid = document.getElementById('video-grid');
+            if (videoGrid) {
+                videoGrid.classList.remove('d-none');
+            }
             if (localVideo) {
                 localVideo.srcObject = screenStream;
             }
@@ -1169,11 +1189,23 @@ function stopScreenShare() {
     
     if (videoSender && camTrack) {
         videoSender.replaceTrack(camTrack);
+    } else if (screenSender) {
+        try {
+            peerConnection.removeTrack(screenSender);
+        } catch (e) {
+            console.error("Error removing screen share track:", e);
+        }
+        screenSender = null;
     }
     
     const localVideo = document.getElementById('local-video');
     if (localVideo) {
-        localVideo.srcObject = localStream;
+        localVideo.srcObject = callType === 'video' ? localStream : null;
+    }
+    
+    const videoGrid = document.getElementById('video-grid');
+    if (callType === 'voice' && videoGrid) {
+        videoGrid.classList.add('d-none');
     }
     
     // Notify remote user screen sharing stopped
