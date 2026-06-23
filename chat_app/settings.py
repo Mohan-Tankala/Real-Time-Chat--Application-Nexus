@@ -149,11 +149,21 @@ LOGOUT_REDIRECT_URL = 'login'
 # Uses Redis if REDIS_URL is provided, fallback to InMemoryChannelLayer for local dev
 REDIS_URL = os.environ.get('REDIS_URL')
 if REDIS_URL:
+    if REDIS_URL.startswith('rediss://'):
+        hosts = [{
+            "address": REDIS_URL,
+            "ssl_cert_reqs": None,
+        }]
+    else:
+        hosts = [REDIS_URL]
+        
     CHANNEL_LAYERS = {
         'default': {
             'BACKEND': 'channels_redis.core.RedisChannelLayer',
             'CONFIG': {
-                "hosts": [REDIS_URL],
+                "hosts": hosts,
+                "socket_timeout": 20,
+                "socket_connect_timeout": 20,
             },
         },
     }
